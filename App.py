@@ -2,14 +2,15 @@ import streamlit as st
 import yt_dlp
 import requests
 
-# -------------------------------------------------------------
-# [필수] SerpApi 공식 홈페이지에서 무료 가입 후 API Key를 발급받으세요.
-# Streamlit Cloud에 배포할 때는 Secret 기능을 사용하는 것이 안전합니다.
-# -------------------------------------------------------------
-SERPAPI_KEY = "YOUR_SERPAPI_KEY_HERE"  # 여기에 발급받은 API 키를 넣으세요.
+# 💡 [보안 강화] .streamlit/secrets.toml 또는 Streamlit Cloud Secrets에 
+# SERPAPI_KEY가 등록되어 있어야 정상 작동합니다.
+try:
+    SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
+except KeyError:
+    SERPAPI_KEY = None
 
 def get_youtube_thumbnail(video_url):
-    """yt-dlp를 이용해 영상을 다운로드하지 않고 썸네일 주소만 추출합니다."""
+    """yt-dlp를 이용해 영상을 다운로드하지 않고 고화질 썸네일 주소만 추출합니다."""
     ydl_opts = {'skip_download': True}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(video_url, download=False)
@@ -23,7 +24,7 @@ def search_original_video(image_url, api_key):
         "engine": "google_lens",
         "url": image_url,
         "api_key": api_key,
-        "hl": "ko"  # 결과 언어 설정
+        "hl": "ko"  # 검색 결과 언어를 한국어로 설정
     }
     
     response = requests.get(search_url, params=params)
@@ -44,12 +45,20 @@ st.write("---")
 video_input = st.text_input("유튜브 또는 쇼츠 영상 링크를 입력하세요:", placeholder="https://youtube.com/shorts/...")
 
 if video_input:
-    if not SERPAPI_KEY or SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE":
-        st.warning("⚠️ 코드가 정상 작동하려면 SerpApi 키가 필요합니다. 코드 상단의 SERPAPI_KEY를 수정해주세요.")
+    # API 키 등록 여부 확인
+    if not SERPAPI_KEY:
+        st.error("⚠️ **API 키가 설정되지 않았습니다!**")
+        st.markdown("""
+        로컬 테스트 중이라면 프로젝트 폴더에 `.streamlit/secrets.toml` 파일을 만들고 아래와 같이 키를 입력하세요:
+        ```toml
+        SERPAPI_KEY = "발급받은_실제_API_키"
+        ```
+        Streamlit Cloud에 배포한 상태라면 **Settings -> Secrets** 메뉴에 위 설정을 추가해야 합니다.
+        """)
     else:
         with st.spinner("🔄 영상을 분석하고 역검색을 진행 중입니다..."):
             try:
-                # 1. 다운로드 없이 썸네일 이미지 주소 따오기
+                # 1. 다운로드 없이 영상의 썸네일 이미지 주소 획득
                 img_url = get_youtube_thumbnail(video_input)
                 
                 if img_url:
@@ -72,7 +81,7 @@ if video_input:
                             source = match.get("source", "출처 미상")
                             thumbnail = match.get("thumbnail")
                             
-                            # 유튜브 링크인 것들을 최상단에 강조하거나 필터링하여 보여줌
+                            # 유튜브 링크인 결과물들을 최상단에 강조하여 출력
                             if "youtube.com" in link or "youtu.be" in link:
                                 found_any = True
                                 col1, col2 = st.columns([1, 3])
@@ -84,9 +93,10 @@ if video_input:
                                     st.caption(f"출처: {source} | [바로가기]({link})")
                                 st.write("---")
                         
+                        # 유튜브 링크를 찾지 못했을 경우 전체 웹 검색 결과 상위 5개 출력
                         if not found_any:
                             st.info("유튜브 플랫폼 내에서 정확히 일치하는 원본 링크를 찾지 못했습니다. 다른 웹사이트 검색 결과를 확인해보세요.")
-                            for match in matches[:5]:  # 상위 5개 일반 매칭 결과 출력
+                            for match in matches[:5]:
                                 st.write(f"- [{match.get('title')}]({match.get('link')}) ({match.get('source')})")
                     else:
                         st.error("검색 결과를 가져오지 못했습니다.")
